@@ -540,6 +540,12 @@
               min="1"
               class="w-full rounded-2xl border border-input bg-background px-3 py-2 text-sm"
             />
+            <p class="text-xs text-muted-foreground">
+              注册前请确认邮箱已配置，<a href="https://github.com/Dreamy-rain/gemini-business2api?tab=readme-ov-file#-%E9%82%AE%E7%AE%B1%E6%8F%90%E4%BE%9B%E5%95%86%E9%85%8D%E7%BD%AE" target="_blank" class="text-primary hover:underline font-medium">查看邮箱配置文档</a>
+            </p>
+            <p class="text-xs text-muted-foreground">
+              遇到注册失败、收不到验证码或刷新异常？<a href="https://github.com/Dreamy-rain/gemini-business2api/issues/46" target="_blank" class="text-primary hover:underline font-medium">查看常见问题与解决方案</a>
+            </p>
           </div>
 
           <div v-else class="space-y-4">
@@ -558,7 +564,7 @@
             <textarea
               v-model="importText"
               class="min-h-[140px] w-full rounded-2xl border border-input bg-background px-3 py-2 text-xs font-mono"
-              placeholder="duckmail----you@example.com----password&#10;moemail----you@moemail.app----emailId&#10;freemail----you@freemail.local&#10;gptmail----you@example.com&#10;user@outlook.com----loginPassword----clientId----refreshToken"
+              placeholder="duckmail----you@example.com----password&#10;moemail----you@moemail.app----emailId&#10;freemail----you@freemail.local&#10;gptmail----you@example.com&#10;cfmail----you@example.com----jwtToken&#10;user@outlook.com----loginPassword----clientId----refreshToken"
             ></textarea>
             <div class="rounded-2xl border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
               <p>支持三种格式：</p>
@@ -566,6 +572,7 @@
               <p class="mt-1 font-mono">moemail----email----emailId</p>
               <p class="mt-1 font-mono">freemail----email</p>
               <p class="mt-1 font-mono">gptmail----email</p>
+              <p class="mt-1 font-mono">cfmail----email----jwtToken</p>
               <p class="mt-1 font-mono">email----password----clientId----refreshToken</p>
               <p class="mt-2">导入后请执行一次"刷新选中"以获取 Cookie。</p>
               <p class="mt-1">注册失败建议关闭无头浏览器再试</p>
@@ -1228,7 +1235,8 @@ const toast = useToast()
 const searchQuery = ref('')
 const statusFilter = ref('all')
 const selectedIds = ref<Set<string>>(new Set())
-const viewMode = ref<'table' | 'card'>('table')
+const viewMode = ref<'table' | 'card'>((localStorage.getItem('accounts_view_mode') as 'table' | 'card') || 'table')
+watch(viewMode, (val) => localStorage.setItem('accounts_view_mode', val))
 const currentPage = ref(1)
 const pageSize = ref(50)
 const isEditOpen = ref(false)
@@ -1787,6 +1795,26 @@ const parseImportLines = (raw: string) => {
       return
     }
 
+    if (parts[0].toLowerCase() === 'cfmail') {
+      if (parts.length < 2 || !parts[1]) {
+        errors.push(`第 ${lineNo} 行格式错误（cfmail）`)
+        return
+      }
+      const email = parts[1]
+      const jwt = parts[2] || ''
+      items.push({
+        id: email,
+        secure_c_ses: '',
+        csesidx: '',
+        config_id: '',
+        expires_at: IMPORT_EXPIRES_AT,
+        mail_provider: 'cfmail',
+        mail_address: email,
+        mail_password: jwt,
+      })
+      return
+    }
+
     if (parts.length >= 4 && parts[0] && parts[2] && parts[3]) {
       const email = parts[0]
       const password = parts[1] || ''
@@ -1973,6 +2001,9 @@ const exportConfig = async (format: 'json' | 'txt', scope: 'all' | 'selected' = 
       }
       if (provider === 'gptmail') {
         return `gptmail----${email}`
+      }
+      if (provider === 'cfmail') {
+        return `cfmail----${email}----${item.mail_password || ''}`
       }
       if (provider === 'duckmail') {
         return `duckmail----${email}----${item.mail_password || ''}`
