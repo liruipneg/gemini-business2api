@@ -1176,6 +1176,14 @@
             <p class="text-xs text-muted-foreground">
               选中导出仅包含当前已勾选账号（{{ selectedCount }} 个）。
             </p>
+            <p class="text-xs text-muted-foreground">
+              <template v-if="exportFormat === 'json'">
+                JSON 格式包含完整数据（Cookie、Token、过期时间等），导入后无需重新刷新。
+              </template>
+              <template v-else>
+                TXT 格式仅导出邮箱和密码，导入后需要重新刷新获取 Cookie。
+              </template>
+            </p>
           </div>
         </div>
         <div class="border-t border-border/60 px-6 py-4">
@@ -1323,6 +1331,7 @@ const statusOptions = [
   { label: '即将过期', value: '即将过期' },
   { label: '已过期', value: '已过期' },
   { label: '手动禁用', value: '手动禁用' },
+  { label: '403 禁用', value: '403 禁用' },
   { label: '429限流', value: '429限流' },
 ]
 
@@ -1880,7 +1889,23 @@ const handleImportFile = async (event: Event) => {
       await accountsStore.updateConfig(next)
       selectedIds.value = new Set(importedIds)
       toast.success(`导入 ${importList.length} 条账号配置`)
-      closeRegisterModal()
+
+      // Check if imported accounts need refresh (no valid cookies)
+      const needRefresh = importList.some((item: any) => !item.secure_c_ses)
+      if (needRefresh && importedIds.length > 0) {
+        closeRegisterModal()
+        const confirmed = await confirmDialog.ask({
+          title: '导入成功',
+          message: `已导入 ${importedIds.length} 个账户。检测到部分账户缺少 Cookie，是否立即刷新？`,
+          confirmText: '立即刷新',
+          cancelText: '稍后手动刷新',
+        })
+        if (confirmed) {
+          await handleRefreshSelected()
+        }
+      } else {
+        closeRegisterModal()
+      }
       return
     }
 
@@ -2348,6 +2373,9 @@ const statusLabel = (account: AdminAccount) => {
     return '429限流'
   }
   if (account.disabled) {
+    if (account.disabled_reason?.includes('403')) {
+      return '403 禁用'
+    }
     return '手动禁用'
   }
   if (account.status === '已过期') {
@@ -2372,6 +2400,9 @@ const statusClass = (account: AdminAccount) => {
   }
   if (status === '手动禁用') {
     return 'bg-muted text-muted-foreground'
+  }
+  if (status === '403 禁用') {
+    return 'bg-rose-600 text-white'
   }
   return 'bg-emerald-500 text-white'
 }
@@ -2405,7 +2436,7 @@ const trialBadgeClass = (days: number | null | undefined) => {
 
 const rowClass = (account: AdminAccount) => {
   const status = statusLabel(account)
-  if (status === '手动禁用' || status === '已过期') {
+  if (status === '手动禁用' || status === '已过期' || status === '403 禁用') {
     return 'bg-muted/70'
   }
   return ''
